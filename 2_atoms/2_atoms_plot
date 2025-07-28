@@ -48,8 +48,7 @@ function compute_leff_matrices(F_tot_inv, D, he, Vdagger, N)
 end
 
 function main_function(d, direction, run)
-    #script_directory = raw"C:\Users\tkaranikolaou\OneDrive - ICFO\decoherence_scattering\nagazima\rates"
-
+    #energy penalty for the s-state
     penalty = zeros(Complex{Float64}, 2 * N, 2 * N)
     penalty[2 * N, 2 * N] = 500.0  
     penalty[1, 1] = 500.0
@@ -72,18 +71,10 @@ function main_function(d, direction, run)
 
     Leff_matrix, Leff_dagger = compute_leff_matrices(F_tot_inv, D, he, Vdagger, N)
 
+    #decoherence rate
     d_rate = sum(1.0 / 2.0 * abs(Leff_matrix[k, 1, 1] - Leff_matrix[k, 2, 2])^2 for k = 1:N)
-
+    #scattering rate
     R_save = 1.0 / 2.0 * sum(abs(Leff_matrix[k, 1, 1])^2 + abs(Leff_dagger[k, 2, 2])^2 for k = 1:N)
-
-    # df = DataFrame(Rsc = R_save, rate = d_rate)
-    # data_file_path = joinpath(script_directory, "data_for_N_$(N).csv")
-
-    # if isfile(data_file_path)
-    #     CSV.write(data_file_path, df, append = true)
-    # else
-    #     CSV.write(data_file_path, df)
-    # end
 
     return d_rate, R_save
 end
@@ -91,9 +82,12 @@ end
 global N = 2
 runs = 1
 d=0.1f0:0.5f0:250.01f0/2.0f0
-
 d=0.01f0:0.05f0:25.0f0
+
+#direction (1,2,3)= Delta x on the (x, y,z)  axis, 
 direction = 1
+
+#initialize
 decoherence = []
 R = []
 
@@ -106,12 +100,7 @@ for dist in d
 end
 
 plot!(d, exp.(-decoherence) .-exp(-1), label="exp(-Rd)", xlabel="Distance", ylabel="Coherence")
-
-
-#p = plot(d, exp.(-decoherence) .-exp(-1), label="exp(-Rd)", xlabel="Distance", ylabel="Coherence")
+#function to adjust
 plot!( d,(1-exp(-1)) .* (1.8*d .+1).^(-1), label="1/distance")
 
 
-
-# plot(d, R)
-# display(p)
