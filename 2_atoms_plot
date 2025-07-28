@@ -1,0 +1,117 @@
+# Calculates the decoherence rate for two atoms, to be compared with the evolution_rho code.
+
+using DifferentialEquations
+using Plots
+using LinearAlgebra
+using CSV, DataFrames
+include("functions.jl")  # Assume functions are updated for Float64 compatibility
+
+function create_rand_configuration(d, direction)
+    r = zeros(Float64, 1, 3)
+    r[1, direction] = d
+    r = vcat(r, [0.0, 0.0, 0.0]')
+    return r
+end
+
+function create_matrices(d, direction, runs)
+    r = create_rand_configuration(d, direction)  
+    G = zeros(Complex{Float64}, N, N)
+    for i = 1:N
+        for j = 1:i
+            value = greens(r[i, :], r[j, :])
+            G[i, j] = value
+            G[j, i] = value
+        end
+    end
+    G_total_int = create_block_diagonal(G, G)
+    imG_total = 2* imag(G)
+    eig_results = eigen(imG_total)
+    F = eig_results.vectors
+    D = vcat((eig_results.values), (eig_results.values))
+    #println(D[1:2])
+    
+    return r, G_total_int, F, D
+end
+
+function compute_leff_matrices(F_tot_inv, D, he, Vdagger, N)
+    Leff_matrix = zeros(Complex{Float64}, N, 2, 2)
+    Leff_dagger = zeros(Complex{Float64}, N, 2, 2)
+    invhe_V =  he \Vdagger 
+    for k = 1:N
+        Jk = zeros(Complex{Float64}, 2N, 2)
+        Jk[:, 1] = sqrt.(D[k]) .* F_tot_inv[k, :]
+        Jk[:, 2] = sqrt.(D[k + N]) .* F_tot_inv[k + N, :]
+        Leff_matrix[k, :, :] .= Jk' * invhe_V
+        Leff_dagger[k, :, :] .= Leff_matrix[k, :, :]'
+    end
+    return Leff_matrix, Leff_dagger
+end
+
+function main_function(d, direction, run)
+    #script_directory = raw"C:\Users\tkaranikolaou\OneDrive - ICFO\decoherence_scattering\nagazima\rates"
+
+    penalty = zeros(Complex{Float64}, 2 * N, 2 * N)
+    penalty[2 * N, 2 * N] = 500.0  
+    penalty[1, 1] = 500.0
+
+    r, G_total_int, F, D = create_matrices(d, direction, run)
+
+    F_tot = create_block_diagonal(F, F)
+    F_tot_inv = F_tot'
+
+    h_e = -G_total_int + penalty
+    #invhe = inv(Symmetric(h_e))
+    he=Symmetric(h_e)
+
+    x = r[:, 1]
+    x_total = hcat(vcat(r[1:N, 1], zeros(Float64, N)), vcat(zeros(Float64, N), r[1:N, 1]))
+
+    omega = 1   #/ sqrt(Float64(N))
+    V = omega / 2.0 .* exp.(-1.0im .* x_total') .* hcat(vcat(ones(Float64, N), zeros(Float64, N)), vcat(zeros(Float64, N), ones(Float64, N)))'
+    Vdagger = V'
+
+    Leff_matrix, Leff_dagger = compute_leff_matrices(F_tot_inv, D, he, Vdagger, N)
+
+    d_rate = sum(1.0 / 2.0 * abs(Leff_matrix[k, 1, 1] - Leff_matrix[k, 2, 2])^2 for k = 1:N)
+
+    R_save = 1.0 / 2.0 * sum(abs(Leff_matrix[k, 1, 1])^2 + abs(Leff_dagger[k, 2, 2])^2 for k = 1:N)
+
+    # df = DataFrame(Rsc = R_save, rate = d_rate)
+    # data_file_path = joinpath(script_directory, "data_for_N_$(N).csv")
+
+    # if isfile(data_file_path)
+    #     CSV.write(data_file_path, df, append = true)
+    # else
+    #     CSV.write(data_file_path, df)
+    # end
+
+    return d_rate, R_save
+end
+
+global N = 2
+runs = 1
+d=0.1f0:0.5f0:250.01f0/2.0f0
+
+d=0.01f0:0.05f0:25.0f0
+direction = 1
+decoherence = []
+R = []
+
+for dist in d
+    global decoherence, R
+    @time rd , Rsc= main_function(dist, direction, 1)
+    #println("decoherence rate=$rd")
+    push!(decoherence, rd)
+    push!(R, Rsc)
+end
+
+plot!(d, exp.(-decoherence) .-exp(-1), label="exp(-Rd)", xlabel="Distance", ylabel="Coherence")
+
+
+#p = plot(d, exp.(-decoherence) .-exp(-1), label="exp(-Rd)", xlabel="Distance", ylabel="Coherence")
+plot!( d,(1-exp(-1)) .* (1.8*d .+1).^(-1), label="1/distance")
+
+
+
+# plot(d, R)
+# display(p)
